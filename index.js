@@ -6,14 +6,14 @@ const Base16 = require('crypto-js/enc-hex');
 const HmacSHA256 = require('crypto-js/hmac-sha256');
 
 var apiHost = 'news.highlights.com';
-var cachedApi = '/news/highlights';
+var apiName = '/news/highlights';
+var awsSecretAccessKey = '<your AWS Secret Access Key>';
+var awsSecretAccessKeyId = '<your AWS Secret Access Key Id>';
+var awsRegion = '<your AWS Region>';
 var serviceName = 'execute-api';
 var algorithm = 'AWS4-HMAC-SHA256';
 
-exports.handler = async (event) => {
-    console.log("Path: " + event.path);
-    //You can take required url from client also to make it dynamic
-    //var cachedApi = event.path;
+function signAPIRequest() {
     var dateTime = new Date();
     //Not sure why but 'replaceAll' was not working, so I had to call 'replace' multiple times.
     //This formats date like: 20201115T231123Z
@@ -22,9 +22,8 @@ exports.handler = async (event) => {
     //Get only Date
     var date = dateTimeInUTC.split("T")[0];
     //Using process.env variable, we can get ACCESS KEY/SECRET KEY of IM Role assigned to Lambda
-    var signingKey = getSignatureKey(process.env.AWS_SECRET_ACCESS_KEY, date,
-        process.env.AWS_REGION, serviceName);
-    var credentialScope = date + '/' + process.env.AWS_REGION + '/' + serviceName + '/aws4_request';
+    var signingKey = getSignatureKey(awsSecretAccessKey, date, awsRegion, serviceName);
+    var credentialScope = date + '/' + awsRegion + '/' + serviceName + '/aws4_request';
     //Headers name: Header value
     var canonicalHeaders = 'cache-control:max-age=0\nhost:' + apiHost + '\nx-amz-date:' + dateTimeInUTC + '\n';
     //Headers should be in lower case, headers in same order as are in above variable
@@ -37,13 +36,13 @@ exports.handler = async (event) => {
     var stringToSign = algorithm + '\n' + dateTimeInUTC + '\n' + credentialScope + '\n' + hashedCanonicalRequest;
     //console.log("String To Sign: " + stringToSign);
     var signature = Base16.stringify(HmacSHA256(stringToSign, signingKey));
-    var authorization = algorithm + ' Credential=' + process.env.AWS_ACCESS_KEY_ID +
-        '/' + date + '/' + process.env.AWS_REGION + '/' + serviceName + '/aws4_request, SignedHeaders=' +
-        signedHeaders + ', Signature=' + signature;
+    var authorization = algorithm + ' Credential=' + awsSecretAccessKeyId + '/' + date + '/'
+        + awsRegion + '/' + serviceName + '/aws4_request, SignedHeaders=' + signedHeaders
+        + ', Signature=' + signature;
 
     let request = {
         hostname: apiHost,
-        path: cachedApi,
+        path: apiName,
         method: 'GET',
         headers: {
             'Cache-Control': 'max-age=0',
@@ -52,14 +51,8 @@ exports.handler = async (event) => {
         }
     };
     //console.log('Auth Header: ' + request.headers['Authorization']);
-    const apiResponse = await makeCall(request);
-
-    const response = {
-        statusCode: 200,
-        body: apiResponse,
-    };
-    return response;
-};
+    makeCall(request);
+}
 
 function getSignatureKey(key, dateStamp, regionName, serviceName) {
     var kDate = crypto.HmacSHA256(dateStamp, "AWS4" + key);
